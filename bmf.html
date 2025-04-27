@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bellman-Ford Visualizer</title>
+  <style>
+    body {
+      background: #e3f6f5;
+      color: #2d334a;
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+    }
+
+    canvas {
+      border: 1px solid #8ecae6;
+      margin-top: 10px;
+      background-color: #caf0f8;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    button, input[type=number] {
+      margin: 5px;
+      padding: 8px 14px;
+      background: #56cfe1;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    button:hover {
+      background: #48bfe3;
+    }
+
+    #stepsTable, #resultTable {
+      margin: 20px auto;
+      border: 1px solid #8ecae6;
+      width: 90%;
+      background: #f1faee;
+      color: #1d3557;
+      border-collapse: collapse;
+      font-size: 15px;
+    }
+
+    #stepsTable th, #stepsTable td,
+    #resultTable th, #resultTable td {
+      border: 1px solid #a8dadc;
+      padding: 10px;
+      text-align: center;
+    }
+
+    #stepsTable th, #resultTable th {
+      background-color: #bde0fe;
+      color: #023047;
+    }
+  </style>
+</head>
+<body>
+  <h2>🧮 Bellman-Ford Visualizer</h2>
+  <label><input type="checkbox" id="isDirected"> Directed Graph</label>
+  <br>
+  <label>Source Node: <input type="number" id="sourceNode" min="0" value="0" style="width: 60px;"></label>
+  <button onclick="solveBellmanFord()">🔁 Run Bellman-Ford</button>
+  <button onclick="undo()">↩️ Undo</button>
+  <button onclick="clearCanvas()">🗑️ Clear All</button>
+
+  <p>Click canvas to add nodes. Click two nodes to add edge with weight.</p>
+  <canvas id="graphCanvas" width="600" height="400"></canvas>
+
+  <h3>📜 Relaxation Steps</h3>
+  <table id="stepsTable">
+    <thead><tr><th>Step</th><th>Details</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <h3>📊 Final Distances & Predecessors</h3>
+  <table id="resultTable">
+    <thead>
+      <tr>
+        <th>Node</th>
+        <th>Distance</th>
+        <th>Predecessor</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+<script>
+  let canvas = document.getElementById("graphCanvas");
+  let ctx = canvas.getContext("2d");
+  let nodes = [], edges = {}, actions = [], selected = [];
+
+  canvas.addEventListener("click", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const clickedNode = nodes.find(n => Math.hypot(n.x - x, n.y - y) < 15);
+
+    if (clickedNode) {
+      selected.push(clickedNode.id);
+      if (selected.length === 2) {
+        const weight = parseFloat(prompt(`Enter weight from ${selected[0]} to ${selected[1]}:`));
+        if (isNaN(weight)) return selected = [];
+
+        const from = selected[0];
+        const to = selected[1];
+        const directed = document.getElementById("isDirected").checked;
+
+        if (!edges[from]) edges[from] = {};
+        edges[from][to] = weight;
+
+        if (!directed) {
+          if (!edges[to]) edges[to] = {};
+          edges[to][from] = weight;
+        }
+
+        actions.push({ type: 'edge', from, to, directed });
+        selected = [];
+        drawGraph();
+      }
+    } else {
+      const id = nodes.length;
+      nodes.push({ id, x, y });
+      edges[id] = {};
+      actions.push({ type: 'node', id });
+      drawGraph();
+    }
+  });
+
+  function drawArrow(fromX, fromY, toX, toY) {
+    const headlen = 10;
+    const angle = Math.atan2(toY - fromY, toX - fromX);
+    const endX = toX - 12 * Math.cos(angle);
+    const endY = toY - 12 * Math.sin(angle);
+
+    ctx.beginPath();
+    ctx.moveTo(fromX, fromY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(endX - headlen * Math.cos(angle - Math.PI / 6), endY - headlen * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(endX - headlen * Math.cos(angle + Math.PI / 6), endY - headlen * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fillStyle = "gray";
+    ctx.fill();
+  }
+
+  function drawGraph() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const directed = document.getElementById("isDirected").checked;
+
+    for (let i in edges) {
+      for (let j in edges[i]) {
+        const ni = nodes[i], nj = nodes[j];
+        ctx.strokeStyle = "gray";
+        if (directed) {
+          drawArrow(ni.x, ni.y, nj.x, nj.y);
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(ni.x, ni.y);
+          ctx.lineTo(nj.x, nj.y);
+          ctx.stroke();
+        }
+        const mx = (ni.x + nj.x) / 2, my = (ni.y + nj.y) / 2;
+        ctx.fillStyle = "black";
+        ctx.fillText(edges[i][j], mx, my);
+      }
+    }
+
+    nodes.forEach(n => {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 12, 0, Math.PI * 2);
+      ctx.fillStyle = "skyblue";
+      ctx.fill();
+      ctx.fillStyle = "black";
+      ctx.fillText(n.id, n.x - 4, n.y + 4);
+    });
+  }
+
+  function solveBellmanFord() {
+    let n = nodes.length;
+    if (n === 0) return;
+
+    let source = parseInt(document.getElementById("sourceNode").value);
+    if (isNaN(source) || source < 0 || source >= n) {
+      alert("Invalid source node!");
+      return;
+    }
+
+    let dist = Array(n).fill(Infinity);
+    let prev = Array(n).fill(null);
+    dist[source] = 0;
+
+    let stepsTable = document.querySelector("#stepsTable tbody");
+    stepsTable.innerHTML = "";
+
+    let step = 1;
+    for (let i = 1; i < n; i++) {
+      for (let u in edges) {
+        for (let v in edges[u]) {
+          let weight = edges[u][v];
+          if (dist[u] + weight < dist[v]) {
+            dist[v] = dist[u] + weight;
+            prev[v] = parseInt(u);
+            let row = stepsTable.insertRow();
+            row.insertCell(0).textContent = `Step ${step++}`;
+            row.insertCell(1).textContent = `Relax edge ${u} → ${v}: dist[${v}] = ${dist[v]}, prev[${v}] = ${u}`;
+          }
+        }
+      }
+    }
+
+    // Check for negative weight cycle
+    let hasCycle = false;
+    for (let u in edges) {
+      for (let v in edges[u]) {
+        if (dist[u] + edges[u][v] < dist[v]) {
+          hasCycle = true;
+          let row = stepsTable.insertRow();
+          row.insertCell(0).textContent = "Cycle Check";
+          row.insertCell(1).textContent = `Negative weight cycle detected at edge ${u} → ${v}`;
+        }
+      }
+    }
+
+    let resultBody = document.querySelector("#resultTable tbody");
+    resultBody.innerHTML = "";
+    for (let i = 0; i < n; i++) {
+      let row = resultBody.insertRow();
+      row.insertCell(0).textContent = i;
+      row.insertCell(1).textContent = dist[i] === Infinity ? "∞" : dist[i];
+      row.insertCell(2).textContent = prev[i] !== null ? prev[i] : "-";
+    }
+
+    if (hasCycle) alert("⚠️ Negative weight cycle detected!");
+  }
+
+  function undo() {
+    const last = actions.pop();
+    if (!last) return;
+    if (last.type === 'node') {
+      nodes.pop();
+      delete edges[last.id];
+      for (let i in edges) delete edges[i][last.id];
+    } else if (last.type === 'edge') {
+      delete edges[last.from][last.to];
+      if (!last.directed) {
+        delete edges[last.to][last.from];
+      }
+    }
+    drawGraph();
+  }
+
+  function clearCanvas() {
+    nodes = [];
+    edges = {};
+    actions = [];
+    selected = [];
+    drawGraph();
+    document.querySelector("#stepsTable tbody").innerHTML = "";
+    document.querySelector("#resultTable tbody").innerHTML = "";
+  }
+</script>
+</body>
+</html>

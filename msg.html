@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Multistage Graph Visualizer</title>
+  <style>
+    body {
+      background: #e3f6f5;
+      color: #2d334a;
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+    }
+
+    canvas {
+      border: 1px solid #8ecae6;
+      margin-top: 10px;
+      background-color: #caf0f8;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    button, input[type=number], select {
+      margin: 5px;
+      padding: 8px 14px;
+      background: #56cfe1;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    button:hover {
+      background: #48bfe3;
+    }
+
+    #stepsTable, #resultTable {
+      margin: 20px auto;
+      border: 1px solid #8ecae6;
+      width: 90%;
+      background: #f1faee;
+      color: #1d3557;
+      border-collapse: collapse;
+      font-size: 15px;
+    }
+
+    #stepsTable th, #stepsTable td,
+    #resultTable th, #resultTable td {
+      border: 1px solid #a8dadc;
+      padding: 10px;
+      text-align: center;
+    }
+
+    #stepsTable th, #resultTable th {
+      background-color: #bde0fe;
+      color: #023047;
+    }
+  </style>
+</head>
+<body>
+  <h2>🧮 Multistage Graph Visualizer</h2>
+  <label>Number of Stages: <input type="number" id="numStages" min="2" value="4" style="width: 60px;"></label>
+  <label>Start Node: <select id="startNodeSelect"></select></label>
+  <label>End Node: <select id="endNodeSelect"></select></label>
+  <button onclick="solveMultistageGraph()">🚀 Solve Multistage Graph</button>
+  <button onclick="undo()">↩️ Undo</button>
+  <button onclick="clearCanvas()">🗑️ Clear All</button>
+
+  <p>Click canvas to add nodes. Click two nodes to add edge with weight. Assign nodes to stages before solving.</p>
+  <canvas id="graphCanvas" width="600" height="400"></canvas>
+
+  <h3>📜 DP Steps</h3>
+  <table id="stepsTable">
+    <thead><tr><th>Node</th><th>Cost</th><th>Next Node</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <h3>🚩 Optimal Path</h3>
+  <table id="resultTable">
+    <thead><tr><th>Step</th><th>Node</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+<script>
+  let canvas = document.getElementById("graphCanvas");
+  let ctx = canvas.getContext("2d");
+  let nodes = [], edges = {}, actions = [], selected = [];
+
+  canvas.addEventListener("click", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const clickedNode = nodes.find(n => Math.hypot(n.x - x, n.y - y) < 15);
+
+    if (clickedNode) {
+      selected.push(clickedNode.id);
+      if (selected.length === 2) {
+        const weight = parseFloat(prompt(`Enter weight from ${selected[0]} to ${selected[1]}:`));
+        if (isNaN(weight)) return selected = [];
+
+        const from = selected[0];
+        const to = selected[1];
+
+        if (!edges[from]) edges[from] = {};
+        edges[from][to] = weight;
+
+        actions.push({ type: 'edge', from, to });
+        selected = [];
+        drawGraph();
+      }
+    } else {
+      const id = nodes.length;
+      const stage = parseInt(prompt("Enter stage number for this node:"));
+      if (isNaN(stage)) return;
+      nodes.push({ id, x, y, stage });
+      edges[id] = {};
+      actions.push({ type: 'node', id });
+      drawGraph();
+      updateDropdowns();
+    }
+  });
+
+  function drawGraph(highlightedPath = []) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const pathEdges = new Set();
+    for (let i = 0; i < highlightedPath.length - 1; i++) {
+      pathEdges.add(`${highlightedPath[i]}-${highlightedPath[i + 1]}`);
+    }
+
+    for (let i in edges) {
+      for (let j in edges[i]) {
+        const ni = nodes[i], nj = nodes[j];
+        const isHighlighted = pathEdges.has(`${i}-${j}`);
+        ctx.strokeStyle = isHighlighted ? "red" : "gray";
+        drawArrow(ni.x, ni.y, nj.x, nj.y, isHighlighted);
+        const mx = (ni.x + nj.x) / 2, my = (ni.y + nj.y) / 2;
+        ctx.fillStyle = "black";
+        ctx.fillText(edges[i][j], mx, my);
+      }
+    }
+
+    nodes.forEach(n => {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 12, 0, Math.PI * 2);
+      ctx.fillStyle = "skyblue";
+      ctx.fill();
+      ctx.fillStyle = "black";
+      ctx.fillText(`${n.id}(S${n.stage})`, n.x - 10, n.y + 4);
+    });
+  }
+
+  function drawArrow(fromX, fromY, toX, toY, highlight = false) {
+    const headlen = 10;
+    const angle = Math.atan2(toY - fromY, toX - fromX);
+    const endX = toX - 12 * Math.cos(angle);
+    const endY = toY - 12 * Math.sin(angle);
+
+    ctx.beginPath();
+    ctx.moveTo(fromX, fromY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(endX - headlen * Math.cos(angle - Math.PI / 6), endY - headlen * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(endX - headlen * Math.cos(angle + Math.PI / 6), endY - headlen * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fillStyle = highlight ? "red" : "gray";
+    ctx.fill();
+  }
+
+  function updateDropdowns() {
+    const startSelect = document.getElementById("startNodeSelect");
+    const endSelect = document.getElementById("endNodeSelect");
+    startSelect.innerHTML = "";
+    endSelect.innerHTML = "";
+
+    nodes.forEach(n => {
+      const option1 = document.createElement("option");
+      option1.value = n.id;
+      option1.text = `Node ${n.id} (S${n.stage})`;
+      startSelect.appendChild(option1);
+
+      const option2 = option1.cloneNode(true);
+      endSelect.appendChild(option2);
+    });
+  }
+
+  function solveMultistageGraph() {
+    const n = nodes.length;
+    const numStages = parseInt(document.getElementById("numStages").value);
+    const startNode = parseInt(document.getElementById("startNodeSelect").value);
+    const endNode = parseInt(document.getElementById("endNodeSelect").value);
+    if (n === 0 || isNaN(numStages) || isNaN(startNode) || isNaN(endNode)) return;
+
+    const cost = Array(n).fill(Infinity);
+    const next = Array(n).fill(null);
+
+    const stageNodes = Array(numStages).fill(0).map(() => []);
+    nodes.forEach(n => stageNodes[n.stage - 1].push(n.id));
+
+    cost[endNode] = 0;
+
+    for (let stage = numStages - 1; stage >= 0; stage--) {
+      for (let u of stageNodes[stage]) {
+        for (let v in edges[u]) {
+          let weight = edges[u][v];
+          if (weight + cost[v] < cost[u]) {
+            cost[u] = weight + cost[v];
+            next[u] = parseInt(v);
+          }
+        }
+      }
+    }
+
+    const stepsBody = document.querySelector("#stepsTable tbody");
+    stepsBody.innerHTML = "";
+    for (let i = 0; i < n; i++) {
+      let row = stepsBody.insertRow();
+      row.insertCell(0).textContent = i;
+      row.insertCell(1).textContent = cost[i] === Infinity ? "∞" : cost[i];
+      row.insertCell(2).textContent = next[i] !== null ? next[i] : "-";
+    }
+
+    const resultBody = document.querySelector("#resultTable tbody");
+    resultBody.innerHTML = "";
+    let path = [startNode];
+    while (next[path[path.length - 1]] !== null) {
+      path.push(next[path[path.length - 1]]);
+      if (path[path.length - 1] === endNode) break;
+    }
+
+    if (path[path.length - 1] !== endNode) {
+      alert("No path from start to end node.");
+      drawGraph(); // fallback
+      return;
+    }
+
+    path.forEach((node, idx) => {
+      let row = resultBody.insertRow();
+      row.insertCell(0).textContent = idx + 1;
+      row.insertCell(1).textContent = node;
+    });
+
+    drawGraph(path); // 🔴 Highlight path
+  }
+
+  function undo() {
+    const last = actions.pop();
+    if (!last) return;
+    if (last.type === 'node') {
+      nodes.pop();
+      delete edges[last.id];
+      for (let i in edges) delete edges[i][last.id];
+    } else if (last.type === 'edge') {
+      delete edges[last.from][last.to];
+    }
+    drawGraph();
+    updateDropdowns();
+  }
+
+  function clearCanvas() {
+    nodes = [];
+    edges = {};
+    actions = [];
+    selected = [];
+    drawGraph();
+    updateDropdowns();
+    document.querySelector("#stepsTable tbody").innerHTML = "";
+    document.querySelector("#resultTable tbody").innerHTML = "";
+  }
+</script>
+</body>
+</html>

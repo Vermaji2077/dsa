@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Prim's Algorithm Visualizer</title>
+  <style>
+    body { font-family: Arial; text-align: center; background: #f0f9ff; color: #003049; }
+    canvas { border: 1px solid #ccc; background: #e0f7fa; margin: 10px auto; display: block; }
+    button, select {
+      margin: 5px; padding: 10px 15px; background-color: #48cae4; color: white;
+      border: none; border-radius: 6px; font-size: 14px; cursor: pointer;
+    }
+    select { color: #003049; background-color: #caf0f8; }
+    button:hover { background-color: #0096c7; }
+    #output {
+      margin-top: 20px; font-family: monospace; white-space: pre-wrap;
+      max-width: 800px; margin-inline: auto; background: #fff; border: 1px solid #ccc;
+      padding: 12px; border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Prim's Algorithm Visualizer</h1>
+  <button onclick="addNode()">➕ Add Node</button>
+  <button onclick="runPrim()">🧮 Run Prim's</button>
+  <button onclick="undo()">↩️ Undo</button>
+  <label for="sourceSelect">🎯 Source Node:</label>
+  <select id="sourceSelect">
+    <option value="-1">None</option>
+  </select>
+  <label>
+    <input type="checkbox" id="directedCheckbox"> ➡️ Directed Graph
+  </label>
+  <canvas id="canvas" width="600" height="400"></canvas>
+  <pre id="output"></pre>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    let nodes = [];
+    let edges = [];
+    let sourceNode = -1;
+    let actionHistory = [];
+
+    const isDirected = () => document.getElementById("directedCheckbox").checked;
+
+    canvas.addEventListener("click", (e) => {
+      const x = e.offsetX;
+      const y = e.offsetY;
+      const clickedNode = nodes.findIndex(n => Math.hypot(n.x - x, n.y - y) < 20);
+      if (clickedNode === -1) {
+        nodes.push({ x, y });
+        actionHistory.push({ type: 'node', index: nodes.length - 1 });
+        updateSourceDropdown();
+        draw();
+      } else {
+        const dest = parseInt(prompt("Enter destination node index:"));
+        const weight = parseFloat(prompt("Enter edge weight:"));
+        if (!isNaN(dest) && dest >= 0 && dest < nodes.length && !isNaN(weight)) {
+          edges.push({ from: clickedNode, to: dest, weight });
+          if (!isDirected()) {
+            edges.push({ from: dest, to: clickedNode, weight }); // undirected
+          }
+          actionHistory.push({ type: 'edge' });
+          draw();
+        }
+      }
+    });
+
+    document.getElementById("sourceSelect").addEventListener("change", function() {
+      sourceNode = parseInt(this.value);
+      draw();
+    });
+
+    function updateSourceDropdown() {
+      const select = document.getElementById("sourceSelect");
+      select.innerHTML = `<option value="-1">None</option>`;
+      nodes.forEach((_, i) => {
+        const option = document.createElement("option");
+        option.value = i;
+        option.textContent = `Node ${i}`;
+        select.appendChild(option);
+      });
+    }
+
+    function addNode() {
+      const x = 50 + Math.random() * 500;
+      const y = 50 + Math.random() * 300;
+      nodes.push({ x, y });
+      actionHistory.push({ type: 'node', index: nodes.length - 1 });
+      updateSourceDropdown();
+      draw();
+    }
+
+    function undo() {
+      if (actionHistory.length === 0) return;
+      const last = actionHistory.pop();
+      if (last.type === 'node') {
+        nodes.pop();
+        edges = edges.filter(e => e.from !== last.index && e.to !== last.index)
+                     .map(e => ({
+                       from: e.from > last.index ? e.from - 1 : e.from,
+                       to: e.to > last.index ? e.to - 1 : e.to,
+                       weight: e.weight
+                     }));
+        updateSourceDropdown();
+      } else if (last.type === 'edge') {
+        edges.pop(); // remove last edge
+        if (!isDirected()) edges.pop(); // remove reverse edge if undirected
+      }
+      draw();
+    }
+
+    function draw(highlightedEdges = []) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (let edge of edges) {
+        const from = nodes[edge.from];
+        const to = nodes[edge.to];
+        if (!from || !to) continue;
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.strokeStyle = highlightedEdges.includes(edge) ? 'red' : 'black';
+        ctx.lineWidth = highlightedEdges.includes(edge) ? 3 : 1;
+        ctx.stroke();
+
+        // Draw arrowhead for directed edges
+        if (isDirected()) {
+          const angle = Math.atan2(to.y - from.y, to.x - from.x);
+          const arrowLength = 10;
+          ctx.beginPath();
+          ctx.moveTo(to.x, to.y);
+          ctx.lineTo(to.x - arrowLength * Math.cos(angle - Math.PI / 6),
+                     to.y - arrowLength * Math.sin(angle - Math.PI / 6));
+          ctx.moveTo(to.x, to.y);
+          ctx.lineTo(to.x - arrowLength * Math.cos(angle + Math.PI / 6),
+                     to.y - arrowLength * Math.sin(angle + Math.PI / 6));
+          ctx.stroke();
+        }
+
+        const midX = (from.x + to.x) / 2;
+        const midY = (from.y + to.y) / 2;
+        ctx.fillStyle = "#000";
+        ctx.fillText(edge.weight, midX, midY);
+      }
+
+      nodes.forEach((n, i) => {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 20, 0, 2 * Math.PI);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.strokeStyle = i === sourceNode ? "green" : "#000";
+        ctx.lineWidth = i === sourceNode ? 3 : 1;
+        ctx.stroke();
+        ctx.fillStyle = "#000";
+        ctx.fillText(i, n.x - 5, n.y + 5);
+      });
+    }
+    function runPrim() {
+  if (isDirected()) {
+    alert("Prim's Algorithm requires an undirected graph. Please uncheck 'Directed Graph'.");
+    return;
+  }
+
+  if (sourceNode === -1) {
+    alert("Please select a source node.");
+    return;
+  }
+
+  const n = nodes.length;
+  const visited = new Array(n).fill(false);
+  const adj = Array.from({ length: n }, () => []);
+
+  // Build adjacency list without duplicates
+  for (let edge of edges) {
+    // Ensure only one entry for undirected edges
+    if (!adj[edge.from].some(e => e.to === edge.to && e.weight === edge.weight)) {
+      adj[edge.from].push(edge);
+    }
+  }
+
+  const mstEdges = [];
+  const output = [];
+  const pq = [];
+
+  visited[sourceNode] = true;
+  for (const e of adj[sourceNode]) {
+    pq.push(e);
+  }
+
+  while (pq.length > 0) {
+    pq.sort((a, b) => a.weight - b.weight);
+    const edge = pq.shift();
+
+    if (visited[edge.to]) continue;
+
+    visited[edge.to] = true;
+    mstEdges.push(edge);
+    output.push(`✅ Added: ${edge.from} - ${edge.to} (weight: ${edge.weight})`);
+
+    for (const next of adj[edge.to]) {
+      if (!visited[next.to]) pq.push(next);
+    }
+  }
+
+  const allReachable = visited.filter(v => v).length;
+  if (allReachable < n) {
+    output.push(`⚠️ Warning: Graph is disconnected. Only ${allReachable} of ${n} nodes are reachable from source.`);
+  }
+
+  const cost = mstEdges.reduce((sum, e) => sum + e.weight, 0);
+  output.push(`\n🌐 Total MST Cost: ${cost}`);
+  document.getElementById("output").textContent = output.join("\n");
+
+  draw(mstEdges);
+}
+  </script>
+</body>
+</html>

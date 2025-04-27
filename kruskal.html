@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Kruskal's Algorithm Visualizer</title>
+  <style>
+    body { font-family: Arial; text-align: center; background: #f0f9ff; color: #003049; }
+    canvas { border: 1px solid #ccc; background: #e0f7fa; margin: 10px auto; display: block; }
+    button, select {
+      margin: 5px; padding: 10px 15px; background-color: #48cae4; color: white;
+      border: none; border-radius: 6px; font-size: 14px; cursor: pointer;
+    }
+    select { color: #003049; background-color: #caf0f8; }
+    button:hover { background-color: #0096c7; }
+    #output {
+      margin-top: 20px; font-family: monospace; white-space: pre-wrap;
+      max-width: 800px; margin-inline: auto; background: #fff; border: 1px solid #ccc;
+      padding: 12px; border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Kruskal's Algorithm Visualizer</h1>
+  <button onclick="addNode()">➕ Add Node</button>
+  <button onclick="runKruskal()">🧮 Run Kruskal's</button>
+  <button onclick="undo()">↩️ Undo</button>
+  <label for="sourceSelect">🎯 Source Node:</label>
+  <select id="sourceSelect" onchange="draw()">
+    <option value="-1">None</option>
+  </select>
+  <canvas id="canvas" width="600" height="400"></canvas>
+  <pre id="output"></pre>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    let nodes = [];
+    let edges = [];
+    let sourceNode = -1;
+    let actionHistory = [];
+
+    canvas.addEventListener("click", (e) => {
+      const x = e.offsetX;
+      const y = e.offsetY;
+      const clickedNode = nodes.findIndex(n => Math.hypot(n.x - x, n.y - y) < 20);
+      if (clickedNode === -1) {
+        nodes.push({ x, y });
+        actionHistory.push({ type: 'node', index: nodes.length - 1 });
+        updateSourceDropdown();
+        draw();
+      } else {
+        const dest = parseInt(prompt("Enter destination node index:"));
+        const weight = parseFloat(prompt("Enter edge weight:"));
+        if (!isNaN(dest) && dest >= 0 && dest < nodes.length && !isNaN(weight)) {
+          edges.push({ from: clickedNode, to: dest, weight });
+          actionHistory.push({ type: 'edge' });
+          draw();
+        }
+      }
+    });
+
+    function updateSourceDropdown() {
+      const select = document.getElementById("sourceSelect");
+      select.innerHTML = `<option value="-1">None</option>`;
+      nodes.forEach((_, i) => {
+        const option = document.createElement("option");
+        option.value = i;
+        option.textContent = `Node ${i}`;
+        select.appendChild(option);
+      });
+    }
+
+    function addNode() {
+      const x = 50 + Math.random() * 500;
+      const y = 50 + Math.random() * 300;
+      nodes.push({ x, y });
+      actionHistory.push({ type: 'node', index: nodes.length - 1 });
+      updateSourceDropdown();
+      draw();
+    }
+
+    function undo() {
+      if (actionHistory.length === 0) return;
+      const last = actionHistory.pop();
+      if (last.type === 'node') {
+        nodes.pop();
+        edges = edges.filter(e => e.from !== last.index && e.to !== last.index)
+                     .map(e => ({
+                       from: e.from > last.index ? e.from - 1 : e.from,
+                       to: e.to > last.index ? e.to - 1 : e.to,
+                       weight: e.weight
+                     }));
+        updateSourceDropdown();
+      } else if (last.type === 'edge') {
+        edges.pop();
+      }
+      draw();
+    }
+
+    function draw(highlightedEdges = []) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      for (let edge of edges) {
+        const from = nodes[edge.from];
+        const to = nodes[edge.to];
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.strokeStyle = highlightedEdges.includes(edge) ? 'red' : 'black';
+        ctx.lineWidth = highlightedEdges.includes(edge) ? 3 : 1;
+        ctx.stroke();
+        const midX = (from.x + to.x) / 2;
+        const midY = (from.y + to.y) / 2;
+        ctx.fillStyle = "#000";
+        ctx.fillText(edge.weight, midX, midY);
+      }
+
+      nodes.forEach((n, i) => {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 20, 0, 2 * Math.PI);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.strokeStyle = i === sourceNode ? "green" : "#000";
+        ctx.lineWidth = i === sourceNode ? 3 : 1;
+        ctx.stroke();
+        ctx.fillStyle = "#000";
+        ctx.fillText(i, n.x - 5, n.y + 5);
+      });
+    }
+
+    function find(parent, i) {
+      if (parent[i] === i) return i;
+      return parent[i] = find(parent, parent[i]);
+    }
+
+    function union(parent, rank, x, y) {
+      const xroot = find(parent, x);
+      const yroot = find(parent, y);
+      if (rank[xroot] < rank[yroot]) parent[xroot] = yroot;
+      else if (rank[xroot] > rank[yroot]) parent[yroot] = xroot;
+      else { parent[yroot] = xroot; rank[xroot]++; }
+    }
+
+    function runKruskal() {
+      const n = nodes.length;
+      let parent = Array.from({ length: n }, (_, i) => i);
+      let rank = Array(n).fill(0);
+
+      let sortedEdges = [...edges].sort((a, b) => a.weight - b.weight);
+      let result = [];
+      let output = [];
+
+      for (let edge of sortedEdges) {
+        let x = find(parent, edge.from);
+        let y = find(parent, edge.to);
+        if (x !== y) {
+          result.push(edge);
+          union(parent, rank, x, y);
+          output.push(`✅ Added: ${edge.from} - ${edge.to} (weight: ${edge.weight})`);
+        } else {
+          output.push(`❌ Skipped: ${edge.from} - ${edge.to} (cycle)`);
+        }
+      }
+
+      const cost = result.reduce((sum, e) => sum + e.weight, 0);
+      output.push(`\n🌐 Total MST Cost: ${cost}`);
+      document.getElementById("output").textContent = output.join("\n");
+
+      draw(result);
+    }
+  </script>
+</body>
+</html>

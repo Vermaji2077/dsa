@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Floyd-Warshall Visualizer</title>
+  <style>
+    canvas { border: 1px solid #ccc; margin: 10px 0; }
+    table, td, th { border: 1px solid black; border-collapse: collapse; padding: 5px; }
+    input[type="text"] { width: 40px; text-align: center; }
+    body {
+      background: #e3f6f5;
+      color: #2d334a;
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+    }
+
+    canvas {
+      border: 1px solid #8ecae6;
+      margin-top: 10px;
+      background-color: #caf0f8;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    button, input[type=number] {
+      margin: 5px;
+      padding: 8px 14px;
+      background: #56cfe1;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    button:hover {
+      background: #48bfe3;
+    }
+
+    #output {
+      margin-top: 20px;
+      white-space: pre-wrap;
+      font-family: 'Courier New', monospace;
+      text-align: left;
+      max-width: 800px;
+      margin-inline: auto;
+      background: #edf6f9;
+      color: #1d3557;
+      padding: 14px;
+      border-radius: 10px;
+      border: 1px solid #a8dadc;
+      font-size: 15px;
+    }
+
+    #matrixInput {
+      display: none;
+      margin-top: 20px;
+    }
+
+    table {
+      margin: 0 auto;
+      border-collapse: collapse;
+      text-align: center;
+      font-family: monospace;
+      font-size: 16px;
+    }
+
+    td {
+      padding: 6px;
+    }
+
+    td input {
+      width: 55px;
+      text-align: center;
+      background-color: #ffffff;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      color: #1d3557;
+      font-size: 16px;
+      padding: 6px;
+      font-family: 'Courier New', monospace;
+    }
+
+    #stepsTable {
+      margin-top: 20px;
+      border: 1px solid #8ecae6;
+      width: 90%;
+      margin-inline: auto;
+      background: #f1faee;
+      color: #1d3557;
+      border-collapse: collapse;
+      font-size: 15px;
+    }
+
+    #stepsTable th, #stepsTable td {
+      border: 1px solid #a8dadc;
+      padding: 10px;
+      text-align: center;
+    }
+
+    #stepsTable th {
+      background-color: #bde0fe;
+      color: #023047;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Floyd-Warshall Visualizer</h1>
+
+  <button onclick="addNode()">➕ Add Node</button>
+  <label><input type="checkbox" id="directedCheckbox"> Directed</label>
+  <button onclick="generateMatrix()">🔄 Update Matrix</button>
+  <button onclick="solveFloydWarshall()">🧠 Run Floyd-Warshall</button>
+  <button onclick="undo()">↩️ Undo</button>
+
+  <canvas id="canvas" width="600" height="400"></canvas>
+
+  <div id="matrixContainer"></div>
+  <h3>Steps:</h3>
+  <table id="stepsTable"><thead><tr><th>k</th><th>Update</th></tr></thead><tbody></tbody></table>
+
+  <pre id="output"></pre>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    let nodes = [];
+    let edges = {};
+    let history = [];
+
+    // Add Node Functionality
+    canvas.addEventListener("click", (e) => {
+      const x = e.offsetX, y = e.offsetY;
+      const nodeIndex = nodes.findIndex(n => Math.hypot(n.x - x, n.y - y) < 20);
+      if (nodeIndex === -1) {
+        nodes.push({ x, y });
+        drawGraph();
+      } else {
+        const weight = prompt("Enter edge weight (number or 'Infinity'):");
+        if (weight !== null && weight.trim() !== "") {
+          let val = (weight.toLowerCase() === "infinity" || weight === "∞") ? Infinity : parseFloat(weight);
+          if (!isNaN(val)) {
+            const j = prompt("Connect to node index:");
+            if (!isNaN(j) && nodes[j]) {
+              if (!edges[nodeIndex]) edges[nodeIndex] = {};
+              edges[nodeIndex][+j] = val;
+              if (!document.getElementById("directedCheckbox").checked) {
+                if (!edges[j]) edges[j] = {};
+                edges[j][nodeIndex] = val;
+              }
+              history.push({ action: 'addEdge', nodeIndex, targetNode: +j, weight: val });
+              drawGraph();
+            }
+          }
+        }
+      }
+    });
+
+    function addNode() {
+      const x = 50 + Math.random() * 500;
+      const y = 50 + Math.random() * 300;
+      nodes.push({ x, y });
+      history.push({ action: 'addNode', node: { x, y } });
+      drawGraph();
+    }
+
+    // Draw Graph (nodes and edges)
+    function drawGraph() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw edges
+      for (let i = 0; i < nodes.length; i++) {
+        if (!edges[i]) continue;
+        for (let j in edges[i]) {
+          if (edges[i][j] === Infinity) continue;
+          const from = nodes[i], to = nodes[j];
+          ctx.beginPath();
+          ctx.moveTo(from.x, from.y);
+          ctx.lineTo(to.x, to.y);
+          ctx.stroke();
+          const midX = (from.x + to.x) / 2, midY = (from.y + to.y) / 2;
+          ctx.fillText(edges[i][j], midX, midY);
+        }
+      }
+
+      // Draw nodes
+      nodes.forEach((n, i) => {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 20, 0, Math.PI * 2);
+        ctx.fillStyle = "#ddd";
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#000";
+        ctx.fillText(i, n.x - 5, n.y + 5);
+      });
+
+      generateMatrix(); // sync matrix
+    }
+
+    // Generate Matrix View
+    function generateMatrix() {
+      const container = document.getElementById("matrixContainer");
+      const table = document.createElement("table");
+
+      const header = table.insertRow();
+      header.insertCell().textContent = "";
+      for (let i = 0; i < nodes.length; i++) {
+        header.insertCell().textContent = i;
+      }
+
+      for (let i = 0; i < nodes.length; i++) {
+        const row = table.insertRow();
+        row.insertCell().textContent = i;
+        for (let j = 0; j < nodes.length; j++) {
+          const cell = row.insertCell();
+          const value = edges[i]?.[j];
+          const input = document.createElement("input");
+          input.type = "text";
+          input.value = (value === Infinity) ? "∞" : (value !== undefined ? value : "");
+          input.oninput = () => handleMatrixInput(i, j, input.value);
+          input.onfocus = () => input.select();
+          cell.appendChild(input);
+        }
+      }
+
+      container.innerHTML = "";
+      container.appendChild(table);
+    }
+
+    // Handle Matrix Input (updating edges)
+    function handleMatrixInput(i, j, val) {
+      val = val.trim();
+      if (val === "") {
+        if (edges[i]) delete edges[i][j];
+        if (!document.getElementById("directedCheckbox").checked && edges[j])
+          delete edges[j][i];
+        history.push({ action: 'deleteEdge', nodeIndex: i, targetNode: j });
+        drawGraph();
+        return;
+      }
+
+      let parsed = (val.toLowerCase() === "infinity" || val === "∞") ? Infinity : parseFloat(val);
+      if (isNaN(parsed)) return;
+
+      if (!edges[i]) edges[i] = {};
+      edges[i][j] = parsed;
+
+      if (!document.getElementById("directedCheckbox").checked) {
+        if (!edges[j]) edges[j] = {};
+        edges[j][i] = parsed;
+      }
+
+      history.push({ action: 'updateEdge', nodeIndex: i, targetNode: j, weight: parsed });
+      drawGraph();
+    }
+
+    // Undo Last Action
+    function undo() {
+      const lastAction = history.pop();
+      if (!lastAction) return;
+
+      if (lastAction.action === 'addNode') {
+        nodes.pop();
+      } else if (lastAction.action === 'addEdge') {
+        delete edges[lastAction.nodeIndex][lastAction.targetNode];
+      } else if (lastAction.action === 'deleteEdge') {
+        if (!edges[lastAction.nodeIndex]) edges[lastAction.nodeIndex] = {};
+        edges[lastAction.nodeIndex][lastAction.targetNode] = lastAction.weight;
+      } else if (lastAction.action === 'updateEdge') {
+        edges[lastAction.nodeIndex][lastAction.targetNode] = lastAction.weight;
+      }
+
+      drawGraph();
+    }
+
+    // Floyd-Warshall Algorithm
+    function solveFloydWarshall() {
+  const n = nodes.length;
+  if (n === 0) return;
+
+  let dist = Array.from({ length: n }, () => Array(n).fill(Infinity));
+  let next = Array.from({ length: n }, () => Array(n).fill(null));
+  const output = [];
+  const stepsTableBody = document.querySelector("#stepsTable tbody");
+  stepsTableBody.innerHTML = "";
+
+  for (let i = 0; i < n; i++) {
+    dist[i][i] = 0;
+    for (let j = 0; j < n; j++) {
+      if (edges[i] && edges[i][j] !== undefined) {
+        dist[i][j] = edges[i][j];
+        next[i][j] = j;
+      }
+    }
+  }
+
+  for (let k = 0; k < n; k++) {
+    output.push(`\n--- Iteration k = ${k} ---`);
+    let updated = false;
+
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        let oldDist = dist[i][j];
+        let alt = (dist[i][k] !== Infinity && dist[k][j] !== Infinity) ? dist[i][k] + dist[k][j] : Infinity;
+        if (alt < dist[i][j]) {
+          dist[i][j] = alt;
+          next[i][j] = next[i][k];
+          output.push(`dist[${i}][${j}] updated: ${oldDist} → ${alt} via ${k}`);
+          const row = stepsTableBody.insertRow();
+          row.insertCell(0).textContent = `k=${k}`;
+          row.insertCell(1).textContent = `dist[${i}][${j}] = dist[${i}][${k}] + dist[${k}][${j}] = ${dist[i][k]} + ${dist[k][j]} = ${alt}`;
+          updated = true;
+        }
+      }
+    }
+
+    if (!updated) {
+      const row = stepsTableBody.insertRow();
+      row.insertCell(0).textContent = `k=${k}`;
+      row.insertCell(1).textContent = `No updates in this iteration.`;
+    }
+  }
+
+  output.push(`\n--- Final Distance Matrix ---`);
+  output.push(dist.map(row => row.map(x => x === Infinity ? "∞" : x).join("\t")).join("\n"));
+  document.getElementById("output").textContent = output.join("\n");
+}
+
+  </script>
+</body>
+</html>

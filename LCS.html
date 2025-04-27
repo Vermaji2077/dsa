@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>LCS Visualizer</title>
+  <style>
+    body {
+      background: #e3f6f5;
+      color: #2d334a;
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+    }
+    input {
+      padding: 8px;
+      margin: 5px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 16px;
+    }
+    button {
+      margin: 10px;
+      padding: 10px 16px;
+      background: #56cfe1;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #48bfe3;
+    }
+    table {
+      border-collapse: collapse;
+      margin: 20px auto;
+      font-family: monospace;
+      font-size: 16px;
+    }
+    td, th {
+      border: 1px solid #8ecae6;
+      padding: 8px;
+      min-width: 30px;
+      text-align: center;
+      background-color: #f1faee;
+    }
+    th {
+      background-color: #bde0fe;
+    }
+    #steps {
+      white-space: pre-wrap;
+      text-align: left;
+      margin: 0 auto;
+      max-width: 800px;
+      background: #edf6f9;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #a8dadc;
+      font-family: 'Courier New', monospace;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Longest Common Subsequence Visualizer</h1>
+  <div>
+    <input type="text" id="str1" placeholder="Enter String 1" />
+    <input type="text" id="str2" placeholder="Enter String 2" />
+    <button onclick="runLCS()">Run LCS</button>
+  </div>
+  <div id="matrixContainer"></div>
+  <h3>Steps:</h3>
+  <div id="steps"></div>
+  <h3>Result:</h3>
+  <div id="result"></div>
+
+  <script>
+    function runLCS() {
+      const s1 = document.getElementById("str1").value;
+      const s2 = document.getElementById("str2").value;
+      const m = s1.length, n = s2.length;
+
+      const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0));
+      const steps = [];
+      const matrixContainer = document.getElementById("matrixContainer");
+      const stepsContainer = document.getElementById("steps");
+      const resultContainer = document.getElementById("result");
+
+      let currentStep = 0;
+
+      // Fill the DP table and record steps
+      for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+          if (s1[i - 1] === s2[j - 1]) {
+            dp[i][j] = dp[i - 1][j - 1] + 1;
+            steps.push(`dp[${i}][${j}] = dp[${i - 1}][${j - 1}] + 1 = ${dp[i][j]} (match '${s1[i - 1]}')`);
+          } else {
+            dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+            steps.push(`dp[${i}][${j}] = max(dp[${i - 1}][${j}], dp[${i}][${j - 1}]) = ${dp[i][j]}`);
+          }
+        }
+      }
+
+      // Reconstruct LCS
+      let lcs = '';
+      let i = m, j = n;
+      while (i > 0 && j > 0) {
+        if (s1[i - 1] === s2[j - 1]) {
+          lcs = s1[i - 1] + lcs;
+          i--; j--;
+        } else if (dp[i - 1][j] > dp[i][j - 1]) {
+          i--;
+        } else {
+          j--;
+        }
+      }
+
+      // Display matrix with dynamic updates
+      const table = document.createElement("table");
+      const headerRow = table.insertRow();
+      headerRow.insertCell().textContent = "";
+      for (let j = 0; j <= n; j++) {
+        const th = document.createElement("th");
+        th.textContent = j === 0 ? "" : s2[j - 1];
+        headerRow.appendChild(th);
+      }
+
+      for (let i = 0; i <= m; i++) {
+        const row = table.insertRow();
+        const th = document.createElement("th");
+        th.textContent = i === 0 ? "" : s1[i - 1];
+        row.appendChild(th);
+        for (let j = 0; j <= n; j++) {
+          const cell = row.insertCell();
+          cell.textContent = dp[i][j];
+        }
+      }
+
+      matrixContainer.innerHTML = "";
+      matrixContainer.appendChild(table);
+
+      // Step-by-step table filling
+      function fillTable() {
+        if (currentStep < steps.length) {
+          const [i, j] = steps[currentStep].match(/\d+/g).map(Number); // Extract i and j from the step string
+
+          // Highlight the current cell
+          const currentCell = table.rows[i].cells[j];
+          currentCell.style.backgroundColor = "#ffecb3"; // Highlight current cell
+          currentCell.style.transition = "background-color 0.5s ease";
+
+          // Update steps and table after each step
+          stepsContainer.textContent = steps.slice(0, currentStep + 1).join("\n");
+          
+          currentStep++;
+
+          setTimeout(fillTable, 500); // Delay for the next step
+        } else {
+          resultContainer.textContent = `LCS: "${lcs}"`;
+        }
+      }
+
+      fillTable();
+    }
+  </script>
+</body>
+</html>

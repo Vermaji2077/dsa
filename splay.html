@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Splay Tree Visualizer</title>
+<style>
+  body {
+    background: #e3f6f5;
+    color: #2d334a;
+    font-family: 'Segoe UI', sans-serif;
+    text-align: center;
+  }
+  canvas {
+    border: 1px solid #8ecae6;
+    margin-top: 10px;
+    background-color: #caf0f8;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  }
+  button, input[type=number] {
+    margin: 5px;
+    padding: 8px 14px;
+    background: #56cfe1;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+  button:hover {
+    background: #48bfe3;
+  }
+  #stepsTable {
+    margin-top: 20px;
+    border: 1px solid #8ecae6;
+    width: 90%;
+    margin-inline: auto;
+    background: #f1faee;
+    color: #1d3557;
+    border-collapse: collapse;
+    font-size: 15px;
+  }
+  #stepsTable th, #stepsTable td {
+    border: 1px solid #a8dadc;
+    padding: 10px;
+    text-align: center;
+  }
+  #stepsTable th {
+    background-color: #bde0fe;
+    color: #023047;
+  }
+</style>
+</head>
+<body>
+
+<h1>Splay Tree Visualizer</h1>
+
+<input id="valueInput" type="number" placeholder="Enter value">
+<button onclick="insertNode()">➕ Insert</button>
+<button onclick="findNode()">🔎 Find (Splay)</button>
+<button onclick="resetTree()">🗑️ Reset</button>
+<button onclick="undo()">↩️ Undo</button>
+<button onclick="redo()">🔁 Redo</button>
+
+<canvas id="canvas" width="800" height="500"></canvas>
+
+<h3>Steps:</h3>
+<table id="stepsTable"><thead><tr><th>Step</th><th>Action</th></tr></thead><tbody></tbody></table>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const stepsTableBody = document.querySelector("#stepsTable tbody");
+
+class Node {
+  constructor(value) {
+    this.value = value;
+    this.left = null;
+    this.right = null;
+    this.parent = null;
+  }
+}
+
+let root = null;
+let history = []; // Array to store the history of tree states
+let redoHistory = []; // Array to store redo history
+
+function insertNode() {
+  const val = parseInt(document.getElementById("valueInput").value);
+  if (isNaN(val)) return;
+
+  let newNode = new Node(val);
+  if (!root) {
+    root = newNode;
+  } else {
+    let curr = root;
+    while (true) {
+      if (val < curr.value) {
+        if (!curr.left) {
+          curr.left = newNode;
+          newNode.parent = curr;
+          break;
+        }
+        curr = curr.left;
+      } else {
+        if (!curr.right) {
+          curr.right = newNode;
+          newNode.parent = curr;
+          break;
+        }
+        curr = curr.right;
+      }
+    }
+    splay(newNode);
+  }
+  document.getElementById("valueInput").value = "";
+  drawTree();
+  saveHistory();
+}
+
+function findNode() {
+  const val = parseInt(document.getElementById("valueInput").value);
+  if (isNaN(val)) return;
+  let node = search(root, val);
+  if (node) splay(node);
+  drawTree();
+  saveHistory();
+}
+
+function search(node, val) {
+  if (!node) return null;
+  if (node.value === val) return node;
+  if (val < node.value) return search(node.left, val);
+  return search(node.right, val);
+}
+
+function splay(x) {
+  while (x.parent) {
+    if (!x.parent.parent) {
+      if (x.parent.left === x) {
+        stepsTableBody.insertRow().innerHTML = `<td>Zig</td><td>Right Rotate ${x.parent.value}</td>`;
+        rotateRight(x.parent);
+      } else {
+        stepsTableBody.insertRow().innerHTML = `<td>Zig</td><td>Left Rotate ${x.parent.value}</td>`;
+        rotateLeft(x.parent);
+      }
+    } else if (x.parent.left === x && x.parent.parent.left === x.parent) {
+      stepsTableBody.insertRow().innerHTML = `<td>Zig-Zig</td><td>Right Rotate ${x.parent.parent.value}, then ${x.parent.value}</td>`;
+      rotateRight(x.parent.parent);
+      rotateRight(x.parent);
+    } else if (x.parent.right === x && x.parent.parent.right === x.parent) {
+      stepsTableBody.insertRow().innerHTML = `<td>Zig-Zig</td><td>Left Rotate ${x.parent.parent.value}, then ${x.parent.value}</td>`;
+      rotateLeft(x.parent.parent);
+      rotateLeft(x.parent);
+    } else if (x.parent.left === x && x.parent.parent.right === x.parent) {
+      stepsTableBody.insertRow().innerHTML = `<td>Zig-Zag</td><td>Right Rotate ${x.parent.value}, Left Rotate ${x.parent.parent.value}</td>`;
+      rotateRight(x.parent);
+      rotateLeft(x.parent);
+    } else {
+      stepsTableBody.insertRow().innerHTML = `<td>Zig-Zag</td><td>Left Rotate ${x.parent.value}, Right Rotate ${x.parent.parent.value}</td>`;
+      rotateLeft(x.parent);
+      rotateRight(x.parent);
+    }
+  }
+  root = x;
+}
+
+function rotateLeft(x) {
+  let y = x.right;
+  if (!y) return;
+  x.right = y.left;
+  if (y.left) y.left.parent = x;
+  y.parent = x.parent;
+  if (!x.parent) root = y;
+  else if (x === x.parent.left) x.parent.left = y;
+  else x.parent.right = y;
+  y.left = x;
+  x.parent = y;
+}
+
+function rotateRight(x) {
+  let y = x.left;
+  if (!y) return;
+  x.left = y.right;
+  if (y.right) y.right.parent = x;
+  y.parent = x.parent;
+  if (!x.parent) root = y;
+  else if (x === x.parent.right) x.parent.right = y;
+  else x.parent.left = y;
+  y.right = x;
+  x.parent = y;
+}
+
+function drawTree() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!root) return;
+  const levelSpacing = 70;
+  const nodeSpacing = 40;
+
+  function drawNode(node, x, y, angle, spread) {
+    if (!node) return;
+
+    ctx.beginPath();
+    ctx.arc(x, y, 20, 0, Math.PI * 2);
+    ctx.fillStyle = "#ddd";
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#000";
+    ctx.textAlign = "center";
+    ctx.fillText(node.value, x, y + 5);
+
+    if (node.left) {
+      let newX = x - spread;
+      let newY = y + levelSpacing;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(newX, newY);
+      ctx.stroke();
+      drawNode(node.left, newX, newY, angle - 20, spread * 0.6);
+    }
+
+    if (node.right) {
+      let newX = x + spread;
+      let newY = y + levelSpacing;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(newX, newY);
+      ctx.stroke();
+      drawNode(node.right, newX, newY, angle + 20, spread * 0.6);
+    }
+  }
+
+  drawNode(root, canvas.width / 2, 50, 0, 100);
+}
+
+function resetTree() {
+  root = null;
+  stepsTableBody.innerHTML = "";
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  saveHistory();
+}
+
+function saveHistory() {
+  history.push(cloneTree(root));
+  redoHistory = []; // Clear redo history when new action is performed
+}
+
+function cloneTree(node) {
+  if (!node) return null;
+  let newNode = new Node(node.value);
+  newNode.left = cloneTree(node.left);
+  newNode.right = cloneTree(node.right);
+  return newNode;
+}
+
+function undo() {
+  if (history.length <= 1) return;
+  redoHistory.push(history.pop()); // Move current state to redo stack
+  root = history[history.length - 1]; // Revert to the previous state
+  drawTree();
+  stepsTableBody.innerHTML = "";
+}
+
+function redo() {
+  if (redoHistory.length === 0) return;
+  history.push(redoHistory.pop()); // Move state from redo stack to history
+  root = history[history.length - 1]; // Reapply the operation
+  drawTree();
+  stepsTableBody.innerHTML = "";
+}
+
+</script>
+
+</body>
+</html>

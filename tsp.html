@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TSP Visualizer</title>
+  <style>
+    body {
+      background: #e3f6f5;
+      color: #2d334a;
+      font-family: 'Segoe UI', sans-serif;
+      text-align: center;
+    }
+
+    canvas {
+      border: 1px solid #8ecae6;
+      margin-top: 10px;
+      background-color: #caf0f8;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    button, input[type=number] {
+      margin: 5px;
+      padding: 8px 14px;
+      background: #56cfe1;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    button:hover {
+      background: #48bfe3;
+    }
+
+    #output {
+      margin-top: 20px;
+      white-space: pre-wrap;
+      font-family: 'Courier New', monospace;
+      text-align: left;
+      max-width: 800px;
+      margin-inline: auto;
+      background: #edf6f9;
+      color: #1d3557;
+      padding: 14px;
+      border-radius: 10px;
+      border: 1px solid #a8dadc;
+      font-size: 15px;
+    }
+
+    #matrixInput {
+      display: none;
+      margin-top: 20px;
+    }
+
+    table {
+      margin: 0 auto;
+      border-collapse: collapse;
+      text-align: center;
+      font-family: monospace;
+      font-size: 16px;
+    }
+
+    td {
+      padding: 6px;
+    }
+
+    td input {
+      width: 55px;
+      text-align: center;
+      background-color: #ffffff;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      color: #1d3557;
+      font-size: 16px;
+      padding: 6px;
+      font-family: 'Courier New', monospace;
+    }
+
+    #stepsTable {
+      margin-top: 20px;
+      border: 1px solid #8ecae6;
+      width: 90%;
+      margin-inline: auto;
+      background: #f1faee;
+      color: #1d3557;
+      border-collapse: collapse;
+      font-size: 15px;
+    }
+
+    #stepsTable th, #stepsTable td {
+      border: 1px solid #a8dadc;
+      padding: 10px;
+      text-align: center;
+    }
+
+    #stepsTable th {
+      background-color: #bde0fe;
+      color: #023047;
+    }
+  </style>
+</head>
+<body>
+  <h2>📍 TSP Visualizer: Graph or Matrix Input + DP Steps</h2>
+  <button onclick="toggleMode()" id="toggleBtn">Switch to Matrix Input</button>
+  <button onclick="undo()">↩️ Undo</button>
+  <label>Source Node: <input type="number" id="sourceNode" min="0" value="0" style="width: 60px;"></label>
+  <button onclick="solveTSP_DP()">📐 Solve with DP</button>
+  <button onclick="clearCanvas()">🗑️ Clear All</button>
+  <label><input type="checkbox" id="directedCheckbox" onchange="syncMatrix()"> Directed Graph</label>
+
+  <div id="canvasContainer">
+    <p>Click canvas to add nodes. Click two nodes to add edge with weight.</p>
+    <canvas id="graphCanvas" width="600" height="400"></canvas>
+  </div>
+
+  <div id="matrixInput">
+    <label>Number of Cities: <input type="number" id="cityCount" min="2" value="3" onchange="generateMatrix()"></label>
+    <div id="matrixTable"></div>
+  </div>
+
+  <div id="output"></div>
+  <table id="stepsTable"><thead><tr><th>Step</th><th>Formula / Update</th></tr></thead><tbody></tbody></table>
+
+  <script>
+    let canvas = document.getElementById("graphCanvas");
+    let ctx = canvas.getContext("2d");
+    let nodes = [], edges = {}, actions = [], selected = [];
+    let matrixMode = false;
+    let matrixData = [];
+
+    canvas.addEventListener("click", (e) => {
+      if (matrixMode) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const clickedNode = nodes.find(n => Math.hypot(n.x - x, n.y - y) < 15);
+
+      if (clickedNode) {
+        selected.push(clickedNode.id);
+        if (selected.length === 2) {
+          const weight = parseFloat(prompt(`Enter weight from ${selected[0]} to ${selected[1]}:`));
+          if (isNaN(weight)) return selected = [];
+          if (!edges[selected[0]]) edges[selected[0]] = {};
+          edges[selected[0]][selected[1]] = weight;
+
+          if (!document.getElementById("directedCheckbox").checked) {
+            if (!edges[selected[1]]) edges[selected[1]] = {};
+            edges[selected[1]][selected[0]] = weight;
+          }
+
+          matrixData[selected[0]][selected[1]] = weight;
+          if (!document.getElementById("directedCheckbox").checked)
+            matrixData[selected[1]][selected[0]] = weight;
+
+          actions.push({ type: 'edge', from: selected[0], to: selected[1] });
+          selected = [];
+          drawGraph();
+          syncMatrix();
+        }
+      } else {
+        const id = nodes.length;
+        nodes.push({ id, x, y });
+        actions.push({ type: 'node', id });
+        matrixData.push(Array(nodes.length).fill(''));
+        for (let row of matrixData) while (row.length < nodes.length) row.push('');
+        drawGraph();
+        syncMatrix();
+      }
+    });
+
+    function toggleMode() {
+      matrixMode = !matrixMode;
+      document.getElementById("matrixInput").style.display = matrixMode ? "block" : "none";
+      document.getElementById("canvasContainer").style.display = matrixMode ? "none" : "block";
+      document.getElementById("toggleBtn").textContent = matrixMode ? "Switch to Canvas Input" : "Switch to Matrix Input";
+      document.getElementById("output").textContent = "";
+      document.querySelector("#stepsTable tbody").innerHTML = "";
+      if (matrixMode) generateMatrix();
+    }
+
+    function generateMatrix() {
+      const count = parseInt(document.getElementById("cityCount").value);
+      let html = "<table>";
+      for (let i = 0; i < count; i++) {
+        html += "<tr>";
+        for (let j = 0; j < count; j++) {
+          const value = (i === j) ? 0 : (edges[i]?.[j] ?? '');
+          html += `<td><input type='number' min='0' step='1' value='${value !== '' ? Math.round(value) : ''}' oninput='handleMatrixInput(${i}, ${j}, this.value)'></td>`;
+        }
+        html += "</tr>";
+      }
+      html += "</table>";
+      document.getElementById("matrixTable").innerHTML = html;
+    }
+
+    function handleMatrixInput(i, j, val) {
+      val = parseInt(val);
+      if (isNaN(val)) return;
+
+      if (!edges[i]) edges[i] = {};
+      edges[i][j] = val;
+
+      const inputs = document.querySelectorAll("#matrixTable input");
+      const n = Math.sqrt(inputs.length);
+      const inputIJ = inputs[i * n + j];
+      inputIJ.value = val;
+
+      if (!document.getElementById("directedCheckbox").checked) {
+        if (!edges[j]) edges[j] = {};
+        edges[j][i] = val;
+        const inputJI = inputs[j * n + i];
+        inputJI.value = val;
+      }
+
+      drawGraph();
+    }
+
+    function syncMatrix() {
+      document.getElementById("cityCount").value = nodes.length;
+      generateMatrix();
+      const inputs = document.querySelectorAll("#matrixTable input");
+      const n = nodes.length;
+      for (let i in nodes) {
+        for (let j in nodes) {
+          const input = inputs[i * n + parseInt(j)];
+          input.value = (i == j) ? 0 : (edges[i] && edges[i][j] !== undefined ? Math.round(edges[i][j]) : '');
+        }
+      }
+    }
+
+    function drawGraph(path = [], highlight = false) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      nodes.forEach((n) => {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 12, 0, Math.PI * 2);
+        ctx.fillStyle = "skyblue";
+        ctx.fill();
+        ctx.fillStyle = "black";
+        ctx.fillText(n.id, n.x - 4, n.y + 4);
+      });
+      for (let i in edges) {
+        for (let j in edges[i]) {
+          const ni = nodes[i], nj = nodes[j];
+          ctx.strokeStyle = "gray";
+          ctx.beginPath();
+          ctx.moveTo(ni.x, ni.y);
+          ctx.lineTo(nj.x, nj.y);
+          ctx.stroke();
+          const mx = (ni.x + nj.x) / 2, my = (ni.y + nj.y) / 2;
+          ctx.fillText(Math.round(edges[i][j]), mx, my);
+        }
+      }
+    }
+
+    function solveTSP_DP() {
+    let n = nodes.length;
+    if (n === 0) return;
+
+    let source = parseInt(document.getElementById("sourceNode").value);
+    if (isNaN(source) || source < 0 || source >= n) {
+        alert("Invalid source node!");
+        return;
+    }
+
+    let dp = {};
+    let path = {};
+    let stepsBySubsetSize = Array(n).fill().map(() => []);
+    let stepCount = 1;
+
+    function getEdgeWeight(i, j) {
+        return (edges[i] && edges[i][j] !== undefined) ? edges[i][j] : Infinity;
+    }
+
+    function tsp(i, S) {
+        const sortedS = [...S].sort((a, b) => a - b);
+        const key = `${i}-${sortedS.join(',')}`;
+        if (dp[key] !== undefined) return dp[key];
+
+        if (S.size === 0) {
+            dp[key] = getEdgeWeight(i, source);
+            stepsBySubsetSize[0].push(`Step ${stepCount++}: g(${i}, {}) = c${i}${source} = ${dp[key]}`);
+            return dp[key];
+        }
+
+        let minCost = Infinity;
+        path[key] = [];
+        let stepVals = [];
+
+        S.forEach(k => {
+            const newS = new Set(S);
+            newS.delete(k);
+            const subCost = tsp(k, newS);
+            const edgeCost = getEdgeWeight(i, k);
+            const total = (edgeCost === Infinity || subCost === Infinity) ? Infinity : edgeCost + subCost;
+
+            stepVals.push(`c${i}${k} + g(${k}, {${[...newS].join(',')}}) = ${edgeCost} + ${subCost} = ${total}`);
+
+            if (total < minCost) {
+                minCost = total;
+                path[key] = [k];
+            } else if (total === minCost) {
+                path[key].push(k);
+            }
+        });
+
+        dp[key] = minCost;
+        const subsetSize = S.size;
+        stepsBySubsetSize[subsetSize].push(`Step ${stepCount++}: g(${i}, {${[...S].join(',')}}) = min { ${stepVals.join(', ')} } = ${minCost}`);
+        return minCost;
+    }
+
+    let fullSet = new Set([...Array(n).keys()].filter(x => x !== source));
+    let result = tsp(source, fullSet);
+
+    let allPaths = [];
+    function reconstructPaths(i, S, currentPath) {
+        const key = `${i}-${[...S].sort().join(',')}`;
+        if (!path[key]) {
+            allPaths.push([...currentPath, source]);
+            return;
+        }
+        for (let next of path[key]) {
+            const newS = new Set(S);
+            newS.delete(next);
+            currentPath.push(next);
+            reconstructPaths(next, newS, currentPath);
+            currentPath.pop();
+        }
+    }
+    reconstructPaths(source, fullSet, [source]);
+
+    const output = [`Optimal Cost: ${result}`, `Optimal Path${allPaths.length > 1 ? 's' : ''}:`];
+    allPaths.forEach(p => output.push(p.join(" → ") + ` → ${source}`));
+
+    drawGraph(allPaths[0], true);
+    document.getElementById("output").textContent = output.join('\n');
+
+    const stepsTableBody = document.querySelector("#stepsTable tbody");
+    stepsTableBody.innerHTML = "";
+    stepsBySubsetSize.forEach(steps => {
+        steps.forEach(step => {
+            const row = stepsTableBody.insertRow();
+            const stepCell = row.insertCell(0);
+            const descCell = row.insertCell(1);
+            const [stepNumber, description] = step.split(': ');
+            stepCell.textContent = stepNumber;
+            descCell.textContent = description;
+        });
+    });
+}
+
+
+    function undo() {
+      const last = actions.pop();
+      if (!last) return;
+      if (last.type === 'node') {
+        nodes.pop();
+        delete edges[last.id];
+        for (let i in edges) delete edges[i][last.id];
+      } else if (last.type === 'edge') {
+        delete edges[last.from][last.to];
+        if (!document.getElementById("directedCheckbox").checked)
+          delete edges[last.to][last.from];
+      }
+      drawGraph();
+      syncMatrix();
+    }
+
+    function clearCanvas() {
+      nodes = [];
+      edges = {};
+      actions = [];
+      selected = [];
+      matrixData = [];
+      drawGraph();
+      syncMatrix();
+      document.getElementById("output").textContent = "";
+      document.querySelector("#stepsTable tbody").innerHTML = "";
+    }
+  </script>
+</body>
+</html>
